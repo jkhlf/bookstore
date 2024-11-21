@@ -1,30 +1,30 @@
 package com.khlf.bookstore.controller;
 
 import com.khlf.bookstore.model.Book;
-import com.khlf.bookstore.service.GutendexService;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import com.khlf.bookstore.repository.BookRepository;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/books")
+@RequestMapping("/books")
 public class BookController {
+    private final BookRepository bookRepository;
 
-    private final GutendexService gutendexService;
-
-    public BookController(GutendexService gutendexService) {
-        this.gutendexService = gutendexService;
+    public BookController(BookRepository bookRepository) {
+        this.bookRepository = bookRepository;
     }
 
+    // Listar todos os livros
     @GetMapping
-    public List<Book> getBooks() {
-        return gutendexService.getBooks();
+    public List<Book> getAllBooks() {
+        return bookRepository.findAll();
     }
 
-    @GetMapping("/sync")
-    public List<Book> syncBooks() {
-        return gutendexService.syncBooks();
+    // Buscar livros por título
+    @GetMapping("/search")
+    public List<Book> searchBooksByTitle(@RequestParam String title) {
+        return bookRepository.findByTitleContainingIgnoreCase(title);
     }
+
 }

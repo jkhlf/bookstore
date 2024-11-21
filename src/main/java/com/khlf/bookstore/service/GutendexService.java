@@ -1,5 +1,6 @@
 package com.khlf.bookstore.service;
 
+import com.khlf.bookstore.dto.BookDTO;
 import com.khlf.bookstore.model.Book;
 import com.khlf.bookstore.repository.BookRepository;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -7,11 +8,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 public class GutendexService {
 
+    private static final String API_URL = "https://gutendex.com/books/";
     private final RestTemplate restTemplate;
     private final BookRepository bookRepository;
 
@@ -21,61 +26,52 @@ public class GutendexService {
     }
 
     public List<Book> fetchBooksFromApi() {
-        String apiUrl = "https://gutendex.com/books/";
-        JsonNode response = restTemplate.getForObject(apiUrl, JsonNode.class);
+        GutendexResponse response = restTemplate.getForObject(API_URL, GutendexResponse.class);
 
-        List<Book> books = new ArrayList<>();
-        if (response != null && response.has("results")) {
-            for (JsonNode result : response.get("results")) {
-                Long id = result.get("id").asLong();
-                String title = result.get("title").asText();
+        return Optional.ofNullable(response)
+                .map(GutendexResponse::getResults)
+                .orElse(Collections.emptyList())
+                .stream()
+                .map(this::convertToBook)
+                .collect(Collectors.toList());
+    }
 
-                // Autor principal
-                String author = "";
-                String authorLife = "";
-                if (result.has("authors") && result.get("authors").isArray() && result.get("authors").size() > 0) {
-                    JsonNode firstAuthor = result.get("authors").get(0);
-                    author = firstAuthor.get("name").asText();
-                    authorLife = String.format(
-                            "%d - %d",
-                            firstAuthor.get("birth_year").asInt(0),
-                            firstAuthor.get("death_year").asInt(0)
-                    );
-                }
+    private Book convertToBook(BookDTO bookDTO) {
+        Book book = new Book();
+        book.setTitle(bookDTO.title());
+        book.setAuthor(extractAuthorName(bookDTO));
+        book.setAuthorLife(extractAuthorLife(bookDTO));
+        book.setSubjects(bookDTO.subjects());
+        book.setCoverImage(extractCoverImage(bookDTO));
+        book.setDownloadUrl(extractDownloadUrl(bookDTO));
+        return book;
+    }
 
-                // Assuntos
-                List<String> subjects = new ArrayList<>();
-                if (result.has("subjects") && result.get("subjects").isArray()) {
-                    for (JsonNode subject : result.get("subjects")) {
-                        subjects.add(subject.asText());
-                    }
-                }
+    private String extractAuthorName(BookDTO bookDTO) {
+        return bookDTO.authors().isEmpty()
+                ? "Unknown Author"
+                : bookDTO.authors().get(0).name();
+    }
 
-                // Imagem da capa
-                String coverImage = result.has("formats") && result.get("formats").has("image/jpeg")
-                        ? result.get("formats").get("image/jpeg").asText()
-                        : null;
+    private String extractAuthorLife(BookDTO bookDTO) {
+        return bookDTO.authors().isEmpty()
+                ? ""
+                : String.format("%d - %d",
+                bookDTO.authors().get(0).birth_year() != null ? bookDTO.authors().get(0).birth_year() : 0,
+                bookDTO.authors().get(0).death_year() != null ? bookDTO.authors().get(0).death_year() : 0);
+    }
 
-                // URL para download
-                String downloadUrl = result.has("formats") && result.get("formats").has("application/epub+zip")
-                        ? result.get("formats").get("application/epub+zip").asText()
-                        : null;
+    private String extractCoverImage(BookDTO bookDTO) {
+        return bookDTO.formats().get("image/jpeg");
+    }
 
-                // Contagem de downloads
-                int downloadCount = result.get("download_count").asInt();
-
-                Book book = new Book(id, title, author, authorLife, subjects, coverImage, downloadUrl, downloadCount);
-                books.add(book);
-            }
-        }
-
-        return books;
+    private String extractDownloadUrl(BookDTO bookDTO) {
+        return bookDTO.formats().get("application/epub+zip");
     }
 
     public List<Book> syncBooks() {
         List<Book> books = fetchBooksFromApi();
-        bookRepository.saveAll(books);
-        return books;
+        return bookRepository.saveAll(books);
     }
 
     public List<Book> getBooks() {
